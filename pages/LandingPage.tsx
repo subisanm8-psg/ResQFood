@@ -17,9 +17,10 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { Logo } from '../components/common/Logo';
+import { formatRupees } from '../lib/currency';
 
 export const LandingPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { lots, matches, subsidyPool, providers, receivers } = useAppStore();
 
@@ -108,7 +109,7 @@ export const LandingPage: React.FC = () => {
 
             <div className="p-4 rounded-2xl bg-cream border border-brown-border">
               <p className="text-2xl sm:text-3xl font-display font-bold text-brown-primary">
-                ₹{helpFundBalance.toLocaleString()}
+                {formatRupees(helpFundBalance, i18n.language)}
               </p>
               <p className="text-xs font-medium text-brown-secondary mt-1">
                 {t('landing.statHelpFund')}

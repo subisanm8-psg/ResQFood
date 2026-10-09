@@ -6,7 +6,7 @@ import { CountdownChip } from '../common/CountdownChip';
 import { EmptyState } from '../common/EmptyState';
 
 export const RequestStatusList: React.FC<{ onNewRequest: () => void }> = ({ onNewRequest }) => {
-  const { requests, selectedReceiverId, simulatedClock } = useAppStore();
+  const { requests, matches, selectedReceiverId, simulatedClock } = useAppStore();
 
   const receiverRequests = requests.filter((r) => r.receiverId === selectedReceiverId);
 
@@ -137,6 +137,37 @@ export const RequestStatusList: React.FC<{ onNewRequest: () => void }> = ({ onNe
                   prefix="Needed in"
                 />
               </div>
+
+              {/* Delivery Progress Bar & Status Chip (Fix 4) */}
+              {(() => {
+                const activeMatch = matches.find(
+                  (m) => m.requestId === req.id && (m.status === 'In Transit' || m.delivery)
+                );
+                if (!activeMatch?.delivery) return null;
+                const progressPct = Math.min(100, Math.round(activeMatch.delivery.progress * 100));
+
+                return (
+                  <div className="mt-2.5 p-2.5 rounded-2xl bg-amber-50/60 border border-amber-200/70 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        <Truck className="w-3.5 h-3.5 text-amber-700" />
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                          {activeMatch.delivery.status}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[11px] font-bold text-amber-950">
+                        {progressPct}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-amber-200/60 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-amber-600 h-full transition-all duration-300 rounded-full"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Unfulfilled Reason if applicable */}
               {req.unfulfilledReason && (

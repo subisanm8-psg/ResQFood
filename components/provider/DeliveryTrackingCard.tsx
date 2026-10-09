@@ -20,13 +20,28 @@ export const DeliveryTrackingCard: React.FC = () => {
     return matchReq && matchReq.receiverId === r.id;
   });
 
-  const progress = activeDelivery.currentRouteProgress || 15;
+  const progressNormalized =
+    activeDelivery.delivery?.progress ??
+    (activeDelivery.currentRouteProgress ? activeDelivery.currentRouteProgress / 100 : 0.15);
+  const progress = Math.min(100, Math.round(progressNormalized * 100));
+  const deliveryStatus =
+    activeDelivery.delivery?.status ||
+    (progress >= 100
+      ? 'Delivered'
+      : progress >= 30
+      ? 'On the way'
+      : progress >= 25
+      ? 'Picked up'
+      : progress > 0
+      ? 'Heading to pickup'
+      : 'Partner assigned');
 
   const steps = [
-    { label: 'Assigned', threshold: 10, completed: progress >= 10 },
-    { label: 'Picked Up', threshold: 40, completed: progress >= 40 },
-    { label: 'In Transit', threshold: 60, completed: progress >= 60 },
-    { label: 'Delivered', threshold: 100, completed: progress >= 100 },
+    { label: 'Assigned', threshold: 0, completed: progressNormalized >= 0 },
+    { label: 'Heading to pickup', threshold: 10, completed: progressNormalized > 0 },
+    { label: 'Picked Up', threshold: 25, completed: progressNormalized >= 0.25 },
+    { label: 'On the way', threshold: 30, completed: progressNormalized >= 0.3 },
+    { label: 'Delivered', threshold: 100, completed: progressNormalized >= 1.0 },
   ];
 
   return (
@@ -37,14 +52,14 @@ export const DeliveryTrackingCard: React.FC = () => {
             <Truck className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="text-xs font-bold text-stone-900">Live Delivery in Transit</h4>
+            <h4 className="text-xs font-bold text-stone-900">Your Deliveries in Progress</h4>
             <p className="text-[11px] text-stone-500">
               {activeDelivery.quantityAllocated} {lot?.unit} of "{lot?.itemName}"
             </p>
           </div>
         </div>
-        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 animate-pulse">
-          Live Tracking Active
+        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+          {deliveryStatus}
         </span>
       </div>
 
@@ -90,7 +105,7 @@ export const DeliveryTrackingCard: React.FC = () => {
           />
         </div>
 
-        <div className="grid grid-cols-4 pt-1 text-center">
+        <div className="grid grid-cols-5 pt-1 text-center">
           {steps.map((st, i) => (
             <div key={i} className="flex flex-col items-center">
               <span

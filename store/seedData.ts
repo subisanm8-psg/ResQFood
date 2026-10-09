@@ -527,7 +527,7 @@ export const SEED_DELIVERY_PARTNERS: DeliveryPartner[] = [
     capacity: 250,
     currentLocation: { lat: 11.0150, lng: 76.9650 },
     status: 'Available',
-    ratePerKm: 1.25,
+    ratePerKm: 18,
     plateNumber: 'TN-38-BZ-4190',
     driverName: 'Muruganandham S',
     phone: '9842271001',
@@ -539,7 +539,7 @@ export const SEED_DELIVERY_PARTNERS: DeliveryPartner[] = [
     capacity: 80,
     currentLocation: { lat: 9.9250, lng: 78.1300 },
     status: 'Available',
-    ratePerKm: 1.4,
+    ratePerKm: 14,
     plateNumber: 'TN-58-AL-8821',
     driverName: 'Karthikeyan K',
     phone: '9842271002',
@@ -551,7 +551,7 @@ export const SEED_DELIVERY_PARTNERS: DeliveryPartner[] = [
     capacity: 750,
     currentLocation: { lat: 10.8200, lng: 78.6850 },
     status: 'Available',
-    ratePerKm: 1.8,
+    ratePerKm: 25,
     plateNumber: 'TN-45-CD-1092',
     driverName: 'Selvakumar R',
     phone: '9842271003',
@@ -563,53 +563,36 @@ export const SEED_DELIVERY_PARTNERS: DeliveryPartner[] = [
     capacity: 40,
     currentLocation: { lat: 11.3400, lng: 77.7150 },
     status: 'Available',
-    ratePerKm: 0.95,
+    ratePerKm: 12,
     plateNumber: 'TN-33-EH-5541',
     driverName: 'Mani Arumugam',
     phone: '9842271004',
   },
 ];
 
+import { HelpFundEntry } from '../lib/pricing';
+
+export const SEED_HELP_FUND_LEDGER: HelpFundEntry[] = [
+  {
+    id: 'ledger-open-1',
+    type: 'Contribution',
+    amount: 2000,
+    createdAt: '2026-10-09T08:00:00.000Z',
+  },
+];
+
 export const INITIAL_HELP_FUND: SubsidyPool = {
-  balance: 14250.0, // in Rs.
-  currentBalance: 14250.0,
-  totalIn: 22500.0,
-  totalOut: 8250.0,
+  balance: 2000,
+  currentBalance: 2000,
+  totalIn: 2000,
+  totalOut: 0,
   transactions: [
     {
-      id: 'tx-1',
-      timestamp: '2026-10-09T09:00:00.000Z',
+      id: 'tx-open-1',
+      timestamp: '2026-10-09T08:00:00.000Z',
       type: 'IN',
-      amount: 15000.0,
-      description: 'Tamil Nadu Civil Supplies Seed Help Fund Grant',
-    },
-    {
-      id: 'tx-2',
-      timestamp: '2026-10-09T10:15:00.000Z',
-      type: 'IN',
-      amount: 3200.0,
-      description: '25% Help Fund Contribution from IT Park Dining Order #412',
-    },
-    {
-      id: 'tx-3',
-      timestamp: '2026-10-09T11:00:00.000Z',
-      type: 'OUT',
-      amount: 1850.0,
-      description: 'Delivery Fee Subsidy for Anbu Illam Orphanage, Erode',
-    },
-    {
-      id: 'tx-4',
-      timestamp: '2026-10-09T11:30:00.000Z',
-      type: 'IN',
-      amount: 4300.0,
-      description: 'Wedding Hall Surplus Surcharge Contribution from Pollachi Mandapam',
-    },
-    {
-      id: 'tx-5',
-      timestamp: '2026-10-09T11:45:00.000Z',
-      type: 'OUT',
-      amount: 6400.0,
-      description: 'Van Delivery Fleet Subsidy for Karunai Shelter, Madurai',
+      amount: 2000,
+      description: 'Opening Help Fund Seed Contribution',
     },
   ],
 };

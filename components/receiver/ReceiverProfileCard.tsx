@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, MapPin, DollarSign, Shield, Info, Edit3, Check } from 'lucide-react';
+import { Users, MapPin, Shield, Info, Edit3, Check } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { OrgType, AffordabilityTier } from '../../types';
 
@@ -141,7 +141,7 @@ export const ReceiverProfileCard: React.FC = () => {
         <Info className="w-4 h-4 text-primary-700 flex-shrink-0 mt-0.5" />
         <p className="leading-relaxed">
           <strong className="font-semibold">Tiered Redistribution Equity: </strong>
-          Low tier receivers (orphanages, shelters) pay a nominal fee (capped at $6.00) with shortfalls funded by the community Subsidy Pool. High tier receivers (corporate canteens, banquets) pay the standard fee plus a 25% subsidy contribution to maintain pool sustainability.
+          Low tier receivers (orphanages, shelters) pay a nominal fee (capped at Rs. 50) with shortfalls funded by the community Help Fund. High tier receivers (corporate canteens, banquets) pay the standard fee plus a 25% contribution to maintain Help Fund sustainability.
         </p>
       </div>
     </div>

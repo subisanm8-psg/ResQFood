@@ -14,6 +14,7 @@ import {
 import { useAppStore } from '../../store/useAppStore';
 import { Match, FoodLot, FoodRequest, Provider } from '../../types';
 import { MockPaymentModal } from './MockPaymentModal';
+import { formatRupees } from '../../lib/currency';
 
 interface ProposalCardProps {
   match: Match;
@@ -28,7 +29,7 @@ export const ProposalNotificationCard: React.FC<ProposalCardProps> = ({
   request,
   provider,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { acceptMatch, declineMatch, subsidyPool } = useAppStore();
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -43,7 +44,7 @@ export const ProposalNotificationCard: React.FC<ProposalCardProps> = ({
     const activePoolBalance = subsidyPool.currentBalance ?? subsidyPool.balance;
     if (match.priceBreakdown.tier === 'Low' && match.priceBreakdown.subsidyAmount > activePoolBalance) {
       setErrorMessage(
-        `Help Fund Insufficient (₹${activePoolBalance.toFixed(2)} available, ₹${match.priceBreakdown.subsidyAmount.toFixed(2)} needed). Match paused.`
+        'The Help Fund does not have enough money right now. Please try a smaller order or wait.'
       );
       return;
     }
@@ -76,9 +77,14 @@ export const ProposalNotificationCard: React.FC<ProposalCardProps> = ({
             <p className="text-[11px] text-stone-500">{t('common.findingMatch')}</p>
           </div>
         </div>
-        <span className="text-xs font-mono font-bold text-brown-primary bg-butter-100 border border-brown-border px-2.5 py-1 rounded-xl">
-          {t('receiver.matchScore')}: {(match.score * 100).toFixed(0)}%
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-brown-secondary bg-cream border border-brown-border px-2 py-0.5 rounded-lg">
+            Help Fund: {formatRupees(subsidyPool.balance, i18n.language)}
+          </span>
+          <span className="text-xs font-mono font-bold text-brown-primary bg-butter-100 border border-brown-border px-2.5 py-1 rounded-xl">
+            {t('receiver.matchScore')}: {(match.score * 100).toFixed(0)}%
+          </span>
+        </div>
       </div>
 
       {/* Error alert if subsidy blocked */}
@@ -130,28 +136,28 @@ export const ProposalNotificationCard: React.FC<ProposalCardProps> = ({
       <div className="p-3 bg-cream/50 rounded-2xl border border-brown-border space-y-1.5 text-xs">
         <div className="flex justify-between items-center text-stone-600">
           <span>{t('pricing.foodHandlingFee')}:</span>
-          <span className="font-mono text-stone-700">₹{match.priceBreakdown.foodHandlingFee.toFixed(2)}</span>
+          <span className="font-mono text-stone-700">{formatRupees(match.priceBreakdown.foodHandlingFee, i18n.language)}</span>
         </div>
         <div className="flex justify-between items-center text-stone-600">
           <span>{t('pricing.deliveryCost')}:</span>
-          <span className="font-mono text-stone-700">₹{match.priceBreakdown.deliveryCost.toFixed(2)}</span>
+          <span className="font-mono text-stone-700">{formatRupees(match.priceBreakdown.deliveryCost, i18n.language)}</span>
         </div>
         {match.priceBreakdown.tier === 'Low' && (
           <div className="flex justify-between items-center text-status-safe font-medium">
             <span>{t('pricing.helpFundApplied')}:</span>
-            <span className="font-mono">-₹{match.priceBreakdown.subsidyAmount.toFixed(2)}</span>
+            <span className="font-mono">-{formatRupees(match.priceBreakdown.subsidyAmount, i18n.language)}</span>
           </div>
         )}
         {match.priceBreakdown.tier === 'High' && (
           <div className="flex justify-between items-center text-brown-caramel font-medium">
             <span>{t('pricing.helpFundContribution')}:</span>
-            <span className="font-mono">+₹{Math.abs(match.priceBreakdown.subsidyAmount).toFixed(2)}</span>
+            <span className="font-mono">+{formatRupees(Math.abs(match.priceBreakdown.subsidyAmount), i18n.language)}</span>
           </div>
         )}
         <div className="flex justify-between items-center font-bold text-brown-primary border-t border-brown-border pt-1.5">
           <span>{t('pricing.finalAmountDue')}:</span>
           <span className="font-mono text-sm text-brown-primary">
-            ₹{match.priceBreakdown.finalAmount.toFixed(2)}
+            {formatRupees(match.priceBreakdown.finalAmount, i18n.language)}
           </span>
         </div>
       </div>

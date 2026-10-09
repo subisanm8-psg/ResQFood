@@ -14,6 +14,7 @@ import {
   UserAccount,
   UserRole,
   UserVerificationStatus,
+  DeliveryState,
 } from '../types';
 import {
   SEED_PROVIDERS,
@@ -21,6 +22,7 @@ import {
   SEED_FOOD_LOTS,
   SEED_REQUESTS,
   SEED_DELIVERY_PARTNERS,
+  SEED_HELP_FUND_LEDGER,
   INITIAL_HELP_FUND,
   BASE_SIMULATION_TIME,
   SEED_ACCOUNTS,
@@ -34,7 +36,18 @@ import {
   normalizeWeights,
 } from '../lib/matcher';
 import { calculateDistanceKm } from '../lib/distance';
-import { hasSufficientSubsidy } from '../lib/pricing';
+import {
+  hasSufficientSubsidy,
+  calculateHelpFundBalance,
+  calculateHelpFundTotals,
+  HelpFundEntry,
+} from '../lib/pricing';
+import {
+  getDeliveryStatusFromProgress,
+  generateStraightLineRoute,
+  interpolateRoutePosition,
+  fetchRouteWithFallback,
+} from '../lib/deliveryHelper';
 import { hashPassword, verifyPassword } from '../lib/authCrypto';
 import { BasketDishRow } from '../lib/basketValidation';
 
@@ -60,7 +73,9 @@ interface AppState {
   requests: FoodRequest[];
   matches: Match[];
   deliveryPartners: DeliveryPartner[];
+  helpFundLedger: HelpFundEntry[];
   subsidyPool: SubsidyPool; // Help Fund
+  getHelpFundBalance: () => number;
   notifications: Notification[];
 
   // Settings & Controls
@@ -116,6 +131,7 @@ interface AppState {
   // Simulation Controls
   setMatchingWeights: (weights: MatchingWeights) => void;
   setDeliverySpeedMultiplier: (speed: number) => void;
+  speedUpDelivery: (matchId?: string) => void;
   toggleClockPlay: () => void;
   setClockSpeed: (speed: number) => void;
   tickSimulatedClock: (deltaSeconds: number) => void;
@@ -163,7 +179,13 @@ export const useAppStore = create<AppState>()(
       requests: SEED_REQUESTS,
       matches: [],
       deliveryPartners: SEED_DELIVERY_PARTNERS,
-      subsidyPool: INITIAL_HELP_FUND,
+      helpFundLedger: SEED_HELP_FUND_LEDGER,
+      subsidyPool: {
+        ...INITIAL_HELP_FUND,
+        balance: calculateHelpFundBalance(SEED_HELP_FUND_LEDGER),
+        currentBalance: calculateHelpFundBalance(SEED_HELP_FUND_LEDGER),
+      },
+      getHelpFundBalance: () => calculateHelpFundBalance(get().helpFundLedger),
       notifications: [],
       matchingWeights: DEFAULT_WEIGHTS,
       maxTravelDistanceKm: DEFAULT_MAX_TRAVEL_DISTANCE_KM,
@@ -584,20 +606,21 @@ export const useAppStore = create<AppState>()(
         }
 
         // Check Help Fund sufficiency for Low tier
+        const currentFundBalance = calculateHelpFundBalance(state.helpFundLedger);
         if (receiver.affordabilityTier === 'Low' && match.priceBreakdown.subsidyAmount > 0) {
           const check = hasSufficientSubsidy(
-            state.subsidyPool.balance,
+            currentFundBalance,
             match.priceBreakdown.subsidyAmount
           );
           if (!check.sufficient) {
             state.addToast(
               'error',
-              'Help Fund Insufficient',
-              `Required Rs. ${match.priceBreakdown.subsidyAmount.toFixed(0)}, but fund balance is only Rs. ${state.subsidyPool.balance.toFixed(0)}.`
+              'Help Fund Notice',
+              'The Help Fund does not have enough money right now. Please try a smaller order or wait.'
             );
             return {
               success: false,
-              error: `Help Fund insufficient (Rs. ${state.subsidyPool.balance.toFixed(0)} available, Rs. ${match.priceBreakdown.subsidyAmount.toFixed(0)} needed).`,
+              error: 'The Help Fund does not have enough money right now. Please try a smaller order or wait.',
             };
           }
         }
@@ -631,44 +654,84 @@ export const useAppStore = create<AppState>()(
             state.deliveryPartners[0];
         }
 
-        // Update Help Fund
-        let updatedPool = { ...state.subsidyPool };
-        if (receiver.affordabilityTier === 'Low' && match.priceBreakdown.subsidyAmount > 0) {
-          updatedPool = {
-            ...updatedPool,
-            balance: Math.round((updatedPool.balance - match.priceBreakdown.subsidyAmount) * 100) / 100,
-            totalOut: Math.round((updatedPool.totalOut + match.priceBreakdown.subsidyAmount) * 100) / 100,
-            transactions: [
-              {
-                id: `tx-${Date.now()}`,
-                timestamp: state.simulatedClock,
-                type: 'OUT' as const,
-                amount: match.priceBreakdown.subsidyAmount,
-                description: `Delivery fee subsidy applied for ${receiver.name} (${match.quantityAllocated} ${lot.unit})`,
-                matchId: match.id,
-              },
-              ...updatedPool.transactions,
-            ],
-          };
-        } else if (receiver.affordabilityTier === 'High' && match.priceBreakdown.subsidyAmount < 0) {
-          const contribution = Math.abs(match.priceBreakdown.subsidyAmount);
-          updatedPool = {
-            ...updatedPool,
-            balance: Math.round((updatedPool.balance + contribution) * 100) / 100,
-            totalIn: Math.round((updatedPool.totalIn + contribution) * 100) / 100,
-            transactions: [
-              {
-                id: `tx-${Date.now()}`,
-                timestamp: state.simulatedClock,
-                type: 'IN' as const,
-                amount: contribution,
-                description: `25% Help Fund surcharge contribution from ${receiver.name}`,
-                matchId: match.id,
-              },
-              ...updatedPool.transactions,
-            ],
-          };
+        // Update Help Fund Ledger idempotently (only once per match)
+        const existingTx = state.helpFundLedger.find((e) => e.matchId === match.id);
+        let updatedLedger = [...state.helpFundLedger];
+        if (!existingTx) {
+          if (receiver.affordabilityTier === 'Low' && match.priceBreakdown.subsidyAmount > 0) {
+            updatedLedger.push({
+              id: `ledger-sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              matchId: match.id,
+              type: 'Subsidy',
+              amount: match.priceBreakdown.subsidyAmount,
+              createdAt: state.simulatedClock,
+            });
+          } else if (receiver.affordabilityTier === 'High' && match.priceBreakdown.subsidyAmount > 0) {
+            updatedLedger.push({
+              id: `ledger-con-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              matchId: match.id,
+              type: 'Contribution',
+              amount: match.priceBreakdown.subsidyAmount,
+              createdAt: state.simulatedClock,
+            });
+          }
         }
+
+        const poolTotals = calculateHelpFundTotals(updatedLedger);
+        const updatedPool: SubsidyPool = {
+          ...state.subsidyPool,
+          balance: poolTotals.balance,
+          currentBalance: poolTotals.balance,
+          totalIn: poolTotals.totalIn,
+          totalOut: poolTotals.totalOut,
+          transactions: [
+            ...(receiver.affordabilityTier === 'Low' && match.priceBreakdown.subsidyAmount > 0 && !existingTx
+              ? [
+                  {
+                    id: `tx-${Date.now()}`,
+                    timestamp: state.simulatedClock,
+                    type: 'OUT' as const,
+                    amount: match.priceBreakdown.subsidyAmount,
+                    description: `Delivery fee subsidy applied for ${receiver.name} (${match.quantityAllocated} ${lot.unit})`,
+                    matchId: match.id,
+                  },
+                ]
+              : receiver.affordabilityTier === 'High' && match.priceBreakdown.subsidyAmount > 0 && !existingTx
+              ? [
+                  {
+                    id: `tx-${Date.now()}`,
+                    timestamp: state.simulatedClock,
+                    type: 'IN' as const,
+                    amount: match.priceBreakdown.subsidyAmount,
+                    description: `25% Help Fund contribution from ${receiver.name}`,
+                    matchId: match.id,
+                  },
+                ]
+              : []),
+            ...state.subsidyPool.transactions,
+          ],
+        };
+
+        // Initialize delivery route and state
+        const pickupCoords: [number, number] = [provider.location.lat, provider.location.lng];
+        const dropCoords: [number, number] = [receiver.location.lat, receiver.location.lng];
+        const initialRoute = generateStraightLineRoute(pickupCoords, dropCoords, 30);
+
+        const initialDelivery: DeliveryState = {
+          matchId: match.id,
+          status: 'Partner assigned',
+          progress: 0,
+          routePoints: initialRoute,
+          startedAt: state.simulatedClock,
+          etaMinutes: match.etaMinutes || 25,
+          timeline: [
+            {
+              timestamp: state.simulatedClock,
+              event: 'Partner assigned',
+              description: `Courier "${assignedPartner?.companyName}" (${assignedPartner?.vehicleType}) assigned. Driver: ${assignedPartner?.driverName}.`,
+            },
+          ],
+        };
 
         const updatedMatches = state.matches.map((m) =>
           m.id === matchId
@@ -676,8 +739,9 @@ export const useAppStore = create<AppState>()(
                 ...m,
                 status: 'In Transit' as const,
                 deliveryPartnerId: assignedPartner?.id,
-                currentRouteProgress: 5,
-                currentCoordinates: assignedPartner?.currentLocation,
+                currentRouteProgress: 0,
+                currentCoordinates: provider.location,
+                delivery: initialDelivery,
                 timeline: [
                   ...m.timeline,
                   {
@@ -702,7 +766,28 @@ export const useAppStore = create<AppState>()(
           matches: updatedMatches,
           requests: updatedRequests,
           deliveryPartners: updatedPartners,
+          helpFundLedger: updatedLedger,
           subsidyPool: updatedPool,
+        });
+
+        // Asynchronously fetch OSRM road route with fallback
+        fetchRouteWithFallback(pickupCoords, dropCoords).then((roadRoute) => {
+          if (roadRoute && roadRoute.length > 1) {
+            set((latestState) => ({
+              matches: latestState.matches.map((m) => {
+                if (m.id === matchId && m.delivery) {
+                  return {
+                    ...m,
+                    delivery: {
+                      ...m.delivery,
+                      routePoints: roadRoute,
+                    },
+                  };
+                }
+                return m;
+              }),
+            }));
+          }
         });
 
         state.addToast('success', 'toasts.matchAccepted', 'Delivery partner assigned.');
@@ -714,6 +799,45 @@ export const useAppStore = create<AppState>()(
         const state = get();
         const match = state.matches.find((m) => m.id === matchId);
         if (!match) return;
+
+        // If paid match is cancelled before pickup, add a Reversal entry
+        let updatedLedger = state.helpFundLedger;
+        let updatedPool = state.subsidyPool;
+        const subsidyEntry = state.helpFundLedger.find((e) => e.matchId === match.id && e.type === 'Subsidy');
+        const hasReversal = state.helpFundLedger.some((e) => e.matchId === match.id && e.type === 'Reversal');
+        const isBeforePickup = !match.delivery || match.delivery.progress < 0.25;
+
+        if (subsidyEntry && !hasReversal && isBeforePickup) {
+          updatedLedger = [
+            ...state.helpFundLedger,
+            {
+              id: `ledger-rev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              matchId: match.id,
+              type: 'Reversal',
+              amount: subsidyEntry.amount,
+              createdAt: state.simulatedClock,
+            },
+          ];
+          const poolTotals = calculateHelpFundTotals(updatedLedger);
+          updatedPool = {
+            ...state.subsidyPool,
+            balance: poolTotals.balance,
+            currentBalance: poolTotals.balance,
+            totalIn: poolTotals.totalIn,
+            totalOut: poolTotals.totalOut,
+            transactions: [
+              {
+                id: `tx-rev-${Date.now()}`,
+                timestamp: state.simulatedClock,
+                type: 'IN' as const,
+                amount: subsidyEntry.amount,
+                description: `Reversal of subsidy for cancelled match ${match.id}`,
+                matchId: match.id,
+              },
+              ...state.subsidyPool.transactions,
+            ],
+          };
+        }
 
         const lot = state.lots.find((l) => l.id === match.lotId);
         let updatedLots = state.lots;
@@ -772,6 +896,8 @@ export const useAppStore = create<AppState>()(
           lots: reMatchResult.updatedLots,
           requests: reMatchResult.updatedRequests,
           matches: reMatchResult.matches,
+          helpFundLedger: updatedLedger,
+          subsidyPool: updatedPool,
         });
 
         state.addToast('warning', 'toasts.matchDeclined', 'Proposal declined.');
@@ -796,12 +922,27 @@ export const useAppStore = create<AppState>()(
                 ...m,
                 status: 'Delivered' as const,
                 currentRouteProgress: 100,
+                delivery: m.delivery
+                  ? {
+                      ...m.delivery,
+                      status: 'Delivered' as const,
+                      progress: 1.0,
+                      timeline: [
+                        ...m.delivery.timeline,
+                        {
+                          timestamp: state.simulatedClock,
+                          event: 'Delivered',
+                          description: `Receiver confirmed safe delivery of ${actualQty} ${lot?.unit || 'portions'}.`,
+                        },
+                      ],
+                    }
+                  : undefined,
                 timeline: [
                   ...m.timeline,
                   {
                     timestamp: state.simulatedClock,
-                    event: 'Delivered',
-                    description: `Delivery completed and verified. ${actualQty} ${lot?.unit || 'portions'} received safely.`,
+                    event: 'Delivered & Confirmed',
+                    description: `Receiver confirmed receipt of ${actualQty} ${lot?.unit || 'portions'}. Impact recorded.`,
                   },
                 ],
               }
@@ -810,9 +951,10 @@ export const useAppStore = create<AppState>()(
 
         const updatedRequests = state.requests.map((r) => {
           if (r.id === match.requestId) {
-            const isFullyReceived = (r.quantityReceived || 0) >= r.quantityNeeded;
+            const isFullyReceived = (r.quantityReceived || 0) + actualQty >= r.quantityNeeded;
             return {
               ...r,
+              quantityReceived: (r.quantityReceived || 0) + actualQty,
               status: (isFullyReceived ? 'Delivered' : 'Partially Fulfilled') as any,
             };
           }
@@ -825,7 +967,7 @@ export const useAppStore = create<AppState>()(
           deliveryPartners: updatedPartners,
         });
 
-        state.addToast('success', 'toasts.deliveryConfirmed', 'Delivery verified!');
+        state.addToast('success', 'toasts.deliveryConfirmed', 'Food receipt confirmed.');
         get().runSmartVsBaselineComparison();
       },
 
@@ -855,6 +997,67 @@ export const useAppStore = create<AppState>()(
       },
 
       setDeliverySpeedMultiplier: (speed) => set({ deliverySpeedMultiplier: speed }),
+
+      speedUpDelivery: (matchId) => {
+        const state = get();
+        let deliveredOccurred = false;
+
+        const updatedMatches = state.matches.map((m) => {
+          if ((!matchId || m.id === matchId) && m.delivery && m.delivery.progress < 1) {
+            const nextProgress = Math.min(1.0, Math.round((m.delivery.progress + 0.35) * 100) / 100);
+            const nextStatus = getDeliveryStatusFromProgress(nextProgress);
+            const pos = interpolateRoutePosition(m.delivery.routePoints, nextProgress);
+
+            if (nextProgress >= 1.0 && m.delivery.progress < 1.0) {
+              deliveredOccurred = true;
+            }
+
+            return {
+              ...m,
+              status: nextProgress >= 1.0 ? ('Delivered' as const) : ('In Transit' as const),
+              currentRouteProgress: Math.round(nextProgress * 100),
+              currentCoordinates: pos,
+              delivery: {
+                ...m.delivery,
+                progress: nextProgress,
+                status: nextStatus,
+                timeline: [
+                  ...m.delivery.timeline,
+                  {
+                    timestamp: state.simulatedClock,
+                    event: nextStatus,
+                    description: `Speed up triggered: ${nextStatus} (${Math.round(nextProgress * 100)}%).`,
+                  },
+                ],
+              },
+            };
+          }
+          return m;
+        });
+
+        const updatedDeliveryPartners = state.deliveryPartners.map((p) => {
+          const activeMatch = updatedMatches.find(
+            (m) => m.deliveryPartnerId === p.id && m.delivery && m.delivery.progress < 1
+          );
+          if (activeMatch?.currentCoordinates) {
+            return {
+              ...p,
+              currentLocation: activeMatch.currentCoordinates,
+            };
+          }
+          return p;
+        });
+
+        if (deliveredOccurred) {
+          state.addToast('success', 'Food Delivered!', 'Courier has safely reached the destination.');
+        }
+
+        set({
+          matches: updatedMatches,
+          deliveryPartners: updatedDeliveryPartners,
+        });
+        get().runSmartVsBaselineComparison();
+      },
 
       toggleClockPlay: () => set((state) => ({ isClockPlaying: !state.isClockPlaying })),
 
@@ -888,54 +1091,59 @@ export const useAppStore = create<AppState>()(
           return lot;
         });
 
-        // 2. Animate delivery partners
-        let partnersUpdated = false;
-        const providerMap = new Map(state.providers.map((p) => [p.id, p]));
-        const receiverMap = new Map(state.receivers.map((r) => [r.id, r]));
-        const partnerMap = new Map(state.deliveryPartners.map((dp) => [dp.id, dp]));
+        // 2. Animate delivery progression for active deliveries
+        let newlyDeliveredCount = 0;
+        let deliveriesUpdated = false;
 
         const updatedMatches = state.matches.map((m) => {
-          if (m.status !== 'In Transit') return m;
-
-          const lot = state.lots.find((l) => l.id === m.lotId);
-          const req = state.requests.find((r) => r.id === m.requestId);
-          const prov = lot ? providerMap.get(lot.providerId) : undefined;
-          const rec = req ? receiverMap.get(req.receiverId) : undefined;
-
-          if (!prov || !rec) return m;
-
-          const speedFactor = (state.clockSpeed * state.deliverySpeedMultiplier) / 4;
-          const currentProgress = m.currentRouteProgress || 5;
-          const newProgress = Math.min(100, currentProgress + 1.2 * speedFactor);
-
-          let lat = prov.location.lat;
-          let lng = prov.location.lng;
-
-          if (newProgress <= 40) {
-            const partner = partnerMap.get(m.deliveryPartnerId || '');
-            const startLat = partner?.currentLocation.lat || prov.location.lat;
-            const startLng = partner?.currentLocation.lng || prov.location.lng;
-            const t = newProgress / 40;
-            lat = startLat + (prov.location.lat - startLat) * t;
-            lng = startLng + (prov.location.lng - startLng) * t;
-          } else {
-            const t = (newProgress - 40) / 60;
-            lat = prov.location.lat + (rec.location.lat - prov.location.lat) * t;
-            lng = prov.location.lng + (rec.location.lng - prov.location.lng) * t;
+          if (!m.delivery || m.delivery.progress >= 1.0 || m.status === 'Delivered' || m.status === 'Declined') {
+            return m;
           }
 
-          partnersUpdated = true;
+          deliveriesUpdated = true;
+          const speedMultiplier = state.clockSpeed * state.deliverySpeedMultiplier;
+          // Trip duration: ~180 simulated seconds for quick live feedback while maintaining realism
+          const tripSeconds = Math.max(90, (m.delivery.etaMinutes || 20) * 8);
+          const progressDelta = (deltaSeconds * speedMultiplier) / tripSeconds;
+          const nextProgress = Math.min(1.0, Math.round((m.delivery.progress + progressDelta) * 10000) / 10000);
+          const nextStatus = getDeliveryStatusFromProgress(nextProgress);
+          const currentPos = interpolateRoutePosition(m.delivery.routePoints, nextProgress);
+
+          const isDeliveredNow = nextProgress >= 1.0 && m.delivery.progress < 1.0;
+          if (isDeliveredNow) {
+            newlyDeliveredCount++;
+          }
+
+          const statusChanged = nextStatus !== m.delivery.status;
+          const updatedDeliveryTimeline = statusChanged
+            ? [
+                ...m.delivery.timeline,
+                {
+                  timestamp: newClockIso,
+                  event: nextStatus,
+                  description: `Status changed to ${nextStatus} (${Math.round(nextProgress * 100)}%).`,
+                },
+              ]
+            : m.delivery.timeline;
 
           return {
             ...m,
-            currentRouteProgress: Math.round(newProgress * 10) / 10,
-            currentCoordinates: { lat, lng },
+            status: nextProgress >= 1.0 ? ('Delivered' as const) : ('In Transit' as const),
+            currentRouteProgress: Math.round(nextProgress * 100),
+            currentCoordinates: currentPos,
+            delivery: {
+              ...m.delivery,
+              progress: nextProgress,
+              status: nextStatus,
+              timeline: updatedDeliveryTimeline,
+            },
           };
         });
 
+        // Update partner positions to match active deliveries
         const updatedDeliveryPartners = state.deliveryPartners.map((p) => {
           const activeMatch = updatedMatches.find(
-            (m) => m.deliveryPartnerId === p.id && m.status === 'In Transit'
+            (m) => m.deliveryPartnerId === p.id && m.delivery && m.delivery.progress < 1.0
           );
           if (activeMatch?.currentCoordinates) {
             return {
@@ -946,15 +1154,23 @@ export const useAppStore = create<AppState>()(
           return p;
         });
 
+        if (newlyDeliveredCount > 0) {
+          state.addToast(
+            'success',
+            'Delivery Arrived!',
+            'Courier has safely delivered the food to the destination.'
+          );
+        }
+
         set({
           simulatedClock: newClockIso,
           lots: updatedLots,
           matches: updatedMatches,
-          deliveryPartners: partnersUpdated ? updatedDeliveryPartners : state.deliveryPartners,
+          deliveryPartners: deliveriesUpdated ? updatedDeliveryPartners : state.deliveryPartners,
         });
 
-        if (lotExpired) {
-          state.addToast('warning', 'common.expired', 'A food lot passed its use-before time.');
+        if (lotExpired || newlyDeliveredCount > 0) {
+          get().runSmartVsBaselineComparison();
         }
       },
 
@@ -988,7 +1204,12 @@ export const useAppStore = create<AppState>()(
           requests: SEED_REQUESTS,
           matches: [],
           deliveryPartners: SEED_DELIVERY_PARTNERS,
-          subsidyPool: INITIAL_HELP_FUND,
+          helpFundLedger: SEED_HELP_FUND_LEDGER,
+          subsidyPool: {
+            ...INITIAL_HELP_FUND,
+            balance: calculateHelpFundBalance(SEED_HELP_FUND_LEDGER),
+            currentBalance: calculateHelpFundBalance(SEED_HELP_FUND_LEDGER),
+          },
           notifications: [],
           simulatedClock: BASE_SIMULATION_TIME,
           selectedProviderId: SEED_PROVIDERS[0].id,
@@ -1180,6 +1401,7 @@ export const useAppStore = create<AppState>()(
         requests: state.requests,
         matches: state.matches,
         deliveryPartners: state.deliveryPartners,
+        helpFundLedger: state.helpFundLedger,
         subsidyPool: state.subsidyPool,
         matchingWeights: state.matchingWeights,
         maxTravelDistanceKm: state.maxTravelDistanceKm,

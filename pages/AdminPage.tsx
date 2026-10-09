@@ -18,12 +18,15 @@ import {
   Check,
   TrendingUp,
   Map as MapIcon,
+  Truck,
+  Navigation,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { TN_DISTRICTS } from '../data/tamilnadu';
 import { MapView } from '../components/map/MapView';
 import { ImpactAnalytics } from '../components/analytics/ImpactAnalytics';
 import { GuidedTour } from '../components/common/GuidedTour';
+import { formatRupees } from '../lib/currency';
 
 export const AdminPage: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -34,6 +37,8 @@ export const AdminPage: React.FC = () => {
     providers,
     receivers,
     lots,
+    requests,
+    deliveryPartners,
     matches,
     subsidyPool,
     maxTravelDistanceKm,
@@ -157,7 +162,7 @@ export const AdminPage: React.FC = () => {
 
         <div className="p-4 bg-white rounded-2xl border border-brown-border shadow-card">
           <span className="text-[11px] font-semibold text-stone-500 block">{t('admin.helpFundBalance')}</span>
-          <p className="text-2xl font-display font-bold text-brown-caramel mt-1">₹{helpFundBalance.toLocaleString()}</p>
+          <p className="text-2xl font-display font-bold text-brown-caramel mt-1">{formatRupees(helpFundBalance, currentLang)}</p>
         </div>
       </div>
 
@@ -451,6 +456,77 @@ export const AdminPage: React.FC = () => {
 
           <div className="h-[640px] rounded-3xl overflow-hidden border border-brown-border shadow-card">
             <MapView />
+          </div>
+
+          {/* Active Deliveries List per Fix 4 spec */}
+          <div className="bg-white p-5 rounded-3xl border border-brown-border shadow-card space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-butter-200 text-brown-primary flex items-center justify-center font-bold">
+                  <Truck className="w-4 h-4 text-brown-primary" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-sm text-brown-primary">Active Deliveries in Transit</h3>
+                  <p className="text-xs text-stone-500">Live courier tracking across Tamil Nadu redistributions</p>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-brown-caramel px-2.5 py-1 bg-butter-100 rounded-xl border border-brown-border">
+                {matches.filter((m) => m.delivery && (m.status === 'In Transit' || m.delivery.status !== 'Delivered')).length} active
+              </span>
+            </div>
+
+            {matches.filter((m) => m.delivery && (m.status === 'In Transit' || m.delivery.status !== 'Delivered')).length === 0 ? (
+              <p className="text-xs text-stone-400 py-3 text-center italic">
+                No deliveries currently in transit. Accept an offer to dispatch courier.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {matches
+                  .filter((m) => m.delivery && (m.status === 'In Transit' || m.delivery.status !== 'Delivered'))
+                  .map((m) => {
+                    const lot = lots.find((l) => l.id === m.lotId);
+                    const req = requests.find((r) => r.id === m.requestId);
+                    const receiver = req ? receivers.find((rc) => rc.id === req.receiverId) : undefined;
+                    const provider = lot ? providers.find((p) => p.id === lot.providerId) : undefined;
+                    const partner = deliveryPartners.find((dp) => dp.id === m.deliveryPartnerId);
+                    const progressVal = Math.round((m.delivery?.progress ?? 0) * 100);
+
+                    return (
+                      <div key={m.id} className="p-3.5 bg-cream/60 rounded-2xl border border-brown-border space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="font-bold text-xs text-brown-primary">{lot?.itemName}</div>
+                            <div className="text-[11px] text-stone-500">
+                              {provider?.name} &rarr; {receiver?.name}
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-butter-200 text-brown-primary border border-brown-border">
+                            {m.delivery?.status || 'In Transit'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-mono">
+                            <span className="text-stone-500">{partner?.companyName} ({partner?.vehicleType})</span>
+                            <span className="font-bold text-brown-primary">{progressVal}%</span>
+                          </div>
+                          <div className="w-full bg-stone-200 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-brown-caramel h-full transition-all duration-300 rounded-full"
+                              style={{ width: `${progressVal}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center text-[10px] text-stone-400 pt-0.5">
+                          <span>Driver: {partner?.driverName}</span>
+                          <span>ETA: ~{Math.max(1, Math.round(m.etaMinutes * (1 - (m.delivery?.progress ?? 0))))} mins</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -14,7 +14,7 @@ import {
 import {
   TrendingUp,
   Download,
-  DollarSign,
+  Coins,
   ShieldAlert,
   ArrowUpRight,
   ArrowDownRight,
@@ -23,9 +23,12 @@ import {
   Sparkles,
   Info,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store/useAppStore';
+import { formatRupees } from '../../lib/currency';
 
 export const ImpactAnalytics: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const {
     comparisonMetrics,
     subsidyPool,
@@ -93,9 +96,9 @@ export const ImpactAnalytics: React.FC = () => {
       'Distance (km)',
       'ETA (mins)',
       'Match Score',
-      'Base Price ($)',
-      'Subsidy ($)',
-      'Final Price ($)',
+      'base_price_rs',
+      'subsidy_rs',
+      'amount_rs',
       'Created At',
       'Last Event',
     ];
@@ -118,9 +121,9 @@ export const ImpactAnalytics: React.FC = () => {
         m.distanceKm,
         m.etaMinutes,
         (m.score * 100).toFixed(1) + '%',
-        m.priceBreakdown.basePrice.toFixed(2),
-        m.priceBreakdown.subsidyAmount.toFixed(2),
-        m.priceBreakdown.finalAmount.toFixed(2),
+        Math.round(m.priceBreakdown.basePrice),
+        Math.round(m.priceBreakdown.subsidyAmount),
+        Math.round(m.priceBreakdown.finalAmount),
         m.createdAt,
         `"${lastEvent.replace(/"/g, '""')}"`,
       ].join(',');
@@ -281,15 +284,15 @@ export const ImpactAnalytics: React.FC = () => {
           <span className="text-[10px] text-stone-400 font-medium">Shelters served on priority</span>
         </div>
 
-        {/* 8. Subsidy Balance */}
+        {/* 8. Help Fund Balance */}
         <div className="bg-white p-4 rounded-3xl border border-stone-200/80 shadow-subtle flex flex-col justify-between">
-          <div className="text-[11px] font-semibold text-stone-500">Subsidy Pool Balance</div>
+          <div className="text-[11px] font-semibold text-stone-500">Help Fund Balance</div>
           <div className="my-2">
             <div className="text-xl font-bold text-stone-900 tracking-tight">
-              ${subsidyPool.balance.toFixed(2)}
+              {formatRupees(subsidyPool.balance, i18n.language)}
             </div>
             <div className="text-[11px] text-stone-400 mt-0.5">
-              In: <span className="text-emerald-700 font-medium">+${subsidyPool.totalIn.toFixed(0)}</span> &bull; Out: <span className="text-rose-700 font-medium">-${subsidyPool.totalOut.toFixed(0)}</span>
+              In: <span className="text-emerald-700 font-medium">+{formatRupees(subsidyPool.totalIn, i18n.language)}</span> &bull; Out: <span className="text-rose-700 font-medium">-{formatRupees(subsidyPool.totalOut, i18n.language)}</span>
             </div>
           </div>
           <span className="text-[10px] text-stone-400 font-medium">Self-sustaining circular fund</span>
@@ -384,16 +387,16 @@ export const ImpactAnalytics: React.FC = () => {
       <div className="bg-white rounded-3xl border border-stone-200/80 shadow-card p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
           <div>
-            <h4 className="font-bold text-sm text-stone-900">Subsidy Pool Financial Ledger</h4>
+            <h4 className="font-bold text-sm text-stone-900">Help Fund Financial Ledger</h4>
             <p className="text-xs text-stone-500">
               Cross-subsidization fund: Corporate canteens and events contribute +25% surcharges to fund low-income & shelter delivery fees
             </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <span className="text-[10px] text-stone-400 block font-medium">Pool Balance</span>
+              <span className="text-[10px] text-stone-400 block font-medium">Fund Balance</span>
               <span className="text-lg font-bold font-mono text-emerald-800">
-                ${subsidyPool.balance.toFixed(2)}
+                {formatRupees(subsidyPool.balance, i18n.language)}
               </span>
             </div>
           </div>
@@ -425,7 +428,7 @@ export const ImpactAnalytics: React.FC = () => {
                   tx.type === 'IN' ? 'text-emerald-700' : 'text-rose-700'
                 }`}
               >
-                {tx.type === 'IN' ? `+$${tx.amount.toFixed(2)}` : `-$${tx.amount.toFixed(2)}`}
+                {tx.type === 'IN' ? `+${formatRupees(tx.amount, i18n.language)}` : `-${formatRupees(tx.amount, i18n.language)}`}
               </span>
             </div>
           ))}
@@ -517,20 +520,20 @@ export const ImpactAnalytics: React.FC = () => {
                       <td className="py-3.5 px-3">
                         <div>
                           <span className="font-bold text-stone-900">
-                            ${m.priceBreakdown.finalAmount.toFixed(2)}
+                            {formatRupees(m.priceBreakdown.finalAmount, i18n.language)}
                           </span>
                           <span className="text-[10px] text-stone-400 ml-1">
-                            (Base: ${m.priceBreakdown.basePrice.toFixed(2)})
+                            (Base: {formatRupees(m.priceBreakdown.basePrice, i18n.language)})
                           </span>
                         </div>
                         {m.priceBreakdown.tier === 'Low' && (
                           <span className="text-[10px] text-emerald-700 block">
-                            Subsidized: -${m.priceBreakdown.subsidyAmount.toFixed(2)}
+                            Subsidized: -{formatRupees(m.priceBreakdown.subsidyAmount, i18n.language)}
                           </span>
                         )}
                         {m.priceBreakdown.tier === 'High' && (
                           <span className="text-[10px] text-blue-700 block">
-                            +${Math.abs(m.priceBreakdown.subsidyAmount).toFixed(2)} contribution
+                            +{formatRupees(Math.abs(m.priceBreakdown.subsidyAmount), i18n.language)} contribution
                           </span>
                         )}
                       </td>

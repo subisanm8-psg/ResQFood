@@ -186,6 +186,23 @@ export interface TimelineEvent {
   description: string;
 }
 
+export type DeliveryProgressStatus =
+  | 'Partner assigned'
+  | 'Heading to pickup'
+  | 'Picked up'
+  | 'On the way'
+  | 'Delivered';
+
+export interface DeliveryState {
+  matchId: string;
+  status: DeliveryProgressStatus;
+  progress: number; // 0 to 1
+  routePoints: [number, number][] ;
+  startedAt: string;
+  etaMinutes: number;
+  timeline: { timestamp: string; event: string; description: string }[];
+}
+
 export interface Match {
   id: string;
   requestId: string;
@@ -200,8 +217,9 @@ export interface Match {
   priceBreakdown: PriceBreakdown;
   deliveryPartnerId?: string;
   declineReason?: string;
-  currentRouteProgress?: number; // 0 to 100%
+  currentRouteProgress?: number; // 0 to 100% or 0 to 1
   currentCoordinates?: { lat: number; lng: number };
+  delivery?: DeliveryState;
   createdAt: string;
 }
 

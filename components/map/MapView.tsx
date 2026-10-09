@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store/useAppStore';
 import { calculateDistanceKm } from '../../lib/distance';
 import { findNearestPlace, searchPlaces, Place } from '../../data/tamilnadu';
+import { MAP_TILE_SOURCES } from '../../lib/mapTiles';
 import { MapPin, Search, Navigation, ZoomIn, ZoomOut } from 'lucide-react';
 
 const TN_BOUNDS: [[number, number], [number, number]] = [
@@ -171,11 +172,13 @@ export const MapView: React.FC<MapViewProps> = ({
     selectedReceiverId,
     setSelectedProviderId,
     setSelectedReceiverId,
+    addToast,
   } = useAppStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Place[]>([]);
-  const [tileError, setTileError] = useState(false);
+  const [tileSourceIndex, setTileSourceIndex] = useState(0);
+  const consecutiveTileErrors = React.useRef(0);
   const [osrmRoutes, setOsrmRoutes] = useState<Record<string, [number, number][]>>({});
 
   // Center on Tamil Nadu by default (~10.9, 78.4, zoom 7)
@@ -237,7 +240,11 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // Active in-transit deliveries
   const activeDeliveries = useMemo(() => {
-    return matches.filter((m) => m.status === 'In Transit');
+    return matches.filter(
+      (m) =>
+        (m.status === 'In Transit' || (m.delivery && m.delivery.status !== 'Delivered')) &&
+        (!m.delivery || m.delivery.progress < 1.0)
+    );
   }, [matches]);
 
   // Fetch OSRM Road Path for in-transit deliveries
@@ -358,19 +365,43 @@ export const MapView: React.FC<MapViewProps> = ({
         <MapControls center={mapCenter} onFindLocation={handleFindMyLocation} />
         <MapEvents active={selectionMode} onSelect={onLocationSelect} />
 
-        {/* Section 5: CARTO Voyager Tiles with fallback to Positron */}
-        <TileLayer
-          attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url={
-            tileError
-              ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-              : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-          }
-          eventHandlers={{
-            tileerror: () => setTileError(true),
-          }}
-          maxZoom={19}
-        />
+        {/* Dynamic TileLayer with automatic error fallback */}
+        {(() => {
+          const currentSource = MAP_TILE_SOURCES[tileSourceIndex] || MAP_TILE_SOURCES[0];
+          return (
+            <TileLayer
+              key={currentSource.url}
+              attribution={currentSource.attribution}
+              url={currentSource.url}
+              subdomains={currentSource.subdomains || 'abc'}
+              className={currentSource.isOsm ? 'osm-warm-filter' : ''}
+              eventHandlers={{
+                tileload: () => {
+                  consecutiveTileErrors.current = 0;
+                },
+                tileerror: () => {
+                  consecutiveTileErrors.current += 1;
+                  if (consecutiveTileErrors.current >= 3) {
+                    consecutiveTileErrors.current = 0;
+                    setTileSourceIndex((prevIndex) => {
+                      if (prevIndex < MAP_TILE_SOURCES.length - 1) {
+                        const nextIndex = prevIndex + 1;
+                        addToast(
+                          'info',
+                          'Map style changed',
+                          'Map style changed because the first one did not load.'
+                        );
+                        return nextIndex;
+                      }
+                      return prevIndex;
+                    });
+                  }
+                },
+              }}
+              maxZoom={19}
+            />
+          );
+        })()}
 
         {/* Selected location marker during picker mode */}
         {selectedLocation && (
@@ -507,13 +538,25 @@ export const MapView: React.FC<MapViewProps> = ({
           const receiver = req ? receivers.find((r) => r.id === req.receiverId) : undefined;
           const partner = deliveryPartners.find((p) => p.id === delivery.deliveryPartnerId);
 
-          if (!provider || !receiver || !delivery.currentCoordinates) return null;
+          if (!provider || !receiver) return null;
 
-          // Road route coordinates from OSRM or fallback straight line
-          const fullRoute = osrmRoutes[delivery.id] || [
-            [provider.location.lat, provider.location.lng],
-            [receiver.location.lat, receiver.location.lng],
-          ];
+          const currentPos = delivery.currentCoordinates ||
+            (delivery.delivery?.routePoints && delivery.delivery.routePoints.length > 0
+              ? { lat: delivery.delivery.routePoints[0][0], lng: delivery.delivery.routePoints[0][1] }
+              : provider.location);
+
+          const fullRoute =
+            delivery.delivery?.routePoints && delivery.delivery.routePoints.length > 1
+              ? delivery.delivery.routePoints
+              : osrmRoutes[delivery.id] || [
+                  [provider.location.lat, provider.location.lng],
+                  [receiver.location.lat, receiver.location.lng],
+                ];
+
+          const progressPercent =
+            delivery.delivery?.progress !== undefined
+              ? Math.round(delivery.delivery.progress * 100)
+              : delivery.currentRouteProgress || 0;
 
           return (
             <React.Fragment key={delivery.id}>
@@ -528,7 +571,7 @@ export const MapView: React.FC<MapViewProps> = ({
               {/* Animated dashed segment for the active courier path */}
               <Polyline
                 positions={[
-                  [delivery.currentCoordinates.lat, delivery.currentCoordinates.lng],
+                  [currentPos.lat, currentPos.lng],
                   [receiver.location.lat, receiver.location.lng],
                 ]}
                 color="#B8793A"
@@ -538,7 +581,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
               {/* Moving delivery van marker */}
               <Marker
-                position={[delivery.currentCoordinates.lat, delivery.currentCoordinates.lng]}
+                position={[currentPos.lat, currentPos.lng]}
                 icon={createDeliveryIcon(partner?.companyName || 'ResQFood Courier')}
               >
                 <Popup className="custom-popup">
@@ -550,7 +593,7 @@ export const MapView: React.FC<MapViewProps> = ({
                       {partner?.driverName} &bull; {partner?.plateNumber}
                     </div>
                     <div className="text-[11px] font-semibold text-brown-caramel">
-                      Progress: {delivery.currentRouteProgress || 10}%
+                      Status: {delivery.delivery?.status || 'In Transit'} ({progressPercent}%)
                     </div>
                   </div>
                 </Popup>

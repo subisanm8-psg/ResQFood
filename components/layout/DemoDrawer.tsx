@@ -22,8 +22,11 @@ import {
   Shield,
   Building2,
   Users,
+  FastForward,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store/useAppStore';
+import { formatRupees } from '../../lib/currency';
 
 interface DemoDrawerProps {
   isOpen: boolean;
@@ -31,6 +34,7 @@ interface DemoDrawerProps {
 }
 
 export const DemoDrawer: React.FC<DemoDrawerProps> = ({ isOpen, onClose }) => {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const {
     isClockPlaying,
@@ -39,11 +43,13 @@ export const DemoDrawer: React.FC<DemoDrawerProps> = ({ isOpen, onClose }) => {
     matchingWeights,
     maxTravelDistanceKm,
     simulatedClock,
+    subsidyPool,
     currentUser,
     viewAsRole,
     toggleClockPlay,
     setClockSpeed,
     setDeliverySpeedMultiplier,
+    speedUpDelivery,
     setMatchingWeights,
     setMaxTravelDistanceKm,
     setViewAsRole,
@@ -298,6 +304,30 @@ export const DemoDrawer: React.FC<DemoDrawerProps> = ({ isOpen, onClose }) => {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Speed Up Delivery Button per Fix 4 spec */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => speedUpDelivery()}
+                    className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <FastForward className="w-3.5 h-3.5" />
+                    <span>Speed up this delivery (+35%)</span>
+                  </button>
+                </div>
+
+                {/* Live Help Fund Balance per Fix 3 spec */}
+                <div className="p-3 bg-butter-100/90 rounded-xl border border-brown-border flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] text-brown-secondary font-medium">Help Fund Balance</div>
+                    <div className="text-sm font-display font-bold text-brown-primary mt-0.5">
+                      {formatRupees(subsidyPool.balance, i18n.language)}
+                    </div>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-butter-200 text-brown-primary font-bold">
+                    Live Pool
+                  </span>
                 </div>
               </div>
 

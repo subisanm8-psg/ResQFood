@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, CreditCard, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { PriceBreakdown } from '../../types';
+import { formatRupees } from '../../lib/currency';
+import { useAppStore } from '../../store/useAppStore';
 
 interface MockPaymentModalProps {
   isOpen: boolean;
@@ -24,7 +26,8 @@ export const MockPaymentModal: React.FC<MockPaymentModalProps> = ({
   unit,
   onConfirmPayment,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { subsidyPool } = useAppStore();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
@@ -39,8 +42,8 @@ export const MockPaymentModal: React.FC<MockPaymentModalProps> = ({
         onConfirmPayment();
         setIsCompleted(false);
         onClose();
-      }, 900);
-    }, 800);
+      }, 700);
+    }, 600);
   };
 
   return (
@@ -78,9 +81,14 @@ export const MockPaymentModal: React.FC<MockPaymentModalProps> = ({
           </div>
         ) : (
           <div className="p-6 space-y-4 text-xs">
-            {/* Order Summary */}
+            {/* Order Summary & Live Help Fund Balance */}
             <div className="p-3 bg-cream rounded-2xl border border-brown-border space-y-1">
-              <div className="font-bold text-brown-primary text-xs">{itemName}</div>
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-brown-primary text-xs">{itemName}</div>
+                <span className="text-[10px] font-bold text-brown-caramel px-2 py-0.5 bg-butter-100 rounded-md border border-brown-border">
+                  Help Fund Balance: {formatRupees(subsidyPool.balance, i18n.language)}
+                </span>
+              </div>
               <div className="text-[11px] text-stone-500">
                 {quantity} {unit} &bull; Prepared by {providerName}
               </div>
@@ -90,36 +98,36 @@ export const MockPaymentModal: React.FC<MockPaymentModalProps> = ({
             <div className="space-y-2 p-3 bg-cream/50 rounded-2xl border border-brown-border">
               <div className="flex justify-between text-stone-600">
                 <span>{t('pricing.foodHandlingFee')}:</span>
-                <span className="font-mono font-medium">₹{priceBreakdown.foodHandlingFee.toFixed(2)}</span>
+                <span className="font-mono font-medium">{formatRupees(priceBreakdown.foodHandlingFee, i18n.language)}</span>
               </div>
               <div className="flex justify-between text-stone-600">
                 <span>{t('pricing.deliveryCost')}:</span>
-                <span className="font-mono font-medium">₹{priceBreakdown.deliveryCost.toFixed(2)}</span>
+                <span className="font-mono font-medium">{formatRupees(priceBreakdown.deliveryCost, i18n.language)}</span>
               </div>
               <div className="flex justify-between font-semibold text-brown-primary border-t border-brown-border pt-1.5">
                 <span>{t('pricing.baseTotal')}:</span>
-                <span className="font-mono">₹{priceBreakdown.basePrice.toFixed(2)}</span>
+                <span className="font-mono">{formatRupees(priceBreakdown.basePrice, i18n.language)}</span>
               </div>
 
               {/* Help Fund Line */}
               {priceBreakdown.tier === 'Low' && (
                 <div className="flex justify-between text-status-safe font-semibold bg-emerald-50/80 p-1.5 rounded-lg">
                   <span>{t('pricing.helpFundApplied')}:</span>
-                  <span className="font-mono">-₹{priceBreakdown.subsidyAmount.toFixed(2)}</span>
+                  <span className="font-mono">-{formatRupees(priceBreakdown.subsidyAmount, i18n.language)}</span>
                 </div>
               )}
 
               {priceBreakdown.tier === 'High' && (
                 <div className="flex justify-between text-brown-caramel font-semibold bg-butter-100/80 p-1.5 rounded-lg">
                   <span>{t('pricing.helpFundContribution')}:</span>
-                  <span className="font-mono">+₹{Math.abs(priceBreakdown.subsidyAmount).toFixed(2)}</span>
+                  <span className="font-mono">+{formatRupees(Math.abs(priceBreakdown.subsidyAmount), i18n.language)}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-sm font-bold text-brown-primary border-t border-brown-border pt-2">
                 <span>{t('pricing.finalAmountDue')}:</span>
                 <span className="font-mono text-brown-primary text-base">
-                  ₹{priceBreakdown.finalAmount.toFixed(2)}
+                  {formatRupees(priceBreakdown.finalAmount, i18n.language)}
                 </span>
               </div>
             </div>
@@ -151,7 +159,7 @@ export const MockPaymentModal: React.FC<MockPaymentModalProps> = ({
                 {isProcessing ? (
                   <span>Processing...</span>
                 ) : (
-                  <span>{t('pricing.payAndDispatch')} (₹{priceBreakdown.finalAmount.toFixed(2)})</span>
+                  <span>{t('pricing.payAndDispatch')} ({formatRupees(priceBreakdown.finalAmount, i18n.language)})</span>
                 )}
               </button>
             </div>
