@@ -13,7 +13,6 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store/useAppStore';
 import { calculateDistanceKm } from '../../lib/distance';
 import { findNearestPlace, searchPlaces, Place } from '../../data/tamilnadu';
-import { MAP_TILE_SOURCES } from '../../lib/mapTiles';
 import { MapPin, Search, Navigation, ZoomIn, ZoomOut } from 'lucide-react';
 
 const TN_BOUNDS: [[number, number], [number, number]] = [
@@ -172,13 +171,10 @@ export const MapView: React.FC<MapViewProps> = ({
     selectedReceiverId,
     setSelectedProviderId,
     setSelectedReceiverId,
-    addToast,
   } = useAppStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Place[]>([]);
-  const [tileSourceIndex, setTileSourceIndex] = useState(0);
-  const consecutiveTileErrors = React.useRef(0);
   const [osrmRoutes, setOsrmRoutes] = useState<Record<string, [number, number][]>>({});
 
   // Center on Tamil Nadu by default (~10.9, 78.4, zoom 7)
@@ -365,43 +361,12 @@ export const MapView: React.FC<MapViewProps> = ({
         <MapControls center={mapCenter} onFindLocation={handleFindMyLocation} />
         <MapEvents active={selectionMode} onSelect={onLocationSelect} />
 
-        {/* Dynamic TileLayer with automatic error fallback */}
-        {(() => {
-          const currentSource = MAP_TILE_SOURCES[tileSourceIndex] || MAP_TILE_SOURCES[0];
-          return (
-            <TileLayer
-              key={currentSource.url}
-              attribution={currentSource.attribution}
-              url={currentSource.url}
-              subdomains={currentSource.subdomains || 'abc'}
-              className={currentSource.isOsm ? 'osm-warm-filter' : ''}
-              eventHandlers={{
-                tileload: () => {
-                  consecutiveTileErrors.current = 0;
-                },
-                tileerror: () => {
-                  consecutiveTileErrors.current += 1;
-                  if (consecutiveTileErrors.current >= 3) {
-                    consecutiveTileErrors.current = 0;
-                    setTileSourceIndex((prevIndex) => {
-                      if (prevIndex < MAP_TILE_SOURCES.length - 1) {
-                        const nextIndex = prevIndex + 1;
-                        addToast(
-                          'info',
-                          'Map style changed',
-                          'Map style changed because the first one did not load.'
-                        );
-                        return nextIndex;
-                      }
-                      return prevIndex;
-                    });
-                  }
-                },
-              }}
-              maxZoom={19}
-            />
-          );
-        })()}
+        {/* OpenStreetMap TileLayer */}
+        <TileLayer
+          attribution="© OpenStreetMap contributors"
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
+        />
 
         {/* Selected location marker during picker mode */}
         {selectedLocation && (

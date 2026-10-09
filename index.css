@@ -74,7 +74,6 @@
 }
 
 /* OpenStreetMap warm styling filter */
-.osm-warm-filter,
-.osm-warm-filter img.leaflet-tile {
-  filter: saturate(0.8) sepia(0.15) !important;
+.leaflet-tile-pane {
+  filter: saturate(0.75) sepia(0.2) brightness(1.03);
 }
