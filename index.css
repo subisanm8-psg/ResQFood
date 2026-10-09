@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #FFFBEA;
+    color: #5A3A22;
+    font-family: 'Poppins', 'Noto Sans Tamil', system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+}
+
+/* Custom card hover lift */
+.card-hover {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -6px rgba(90, 58, 34, 0.12), 0 4px 10px -2px rgba(90, 58, 34, 0.06);
+}
+
+/* Custom Leaflet styling */
+.custom-leaflet-pin,
+.custom-provider-pin,
+.custom-receiver-pin,
+.custom-vehicle-pin,
+.custom-picker-pin {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  border: none !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 1rem !important;
+  box-shadow: 0 12px 28px -6px rgba(90, 58, 34, 0.14) !important;
+  border: 1px solid #E8D9B5 !important;
+  background-color: #FFFFFF !important;
+  color: #5A3A22 !important;
+  padding: 4px !important;
+}
+
+.leaflet-popup-tip {
+  background: #FFFFFF !important;
+  border: 1px solid #E8D9B5 !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 14px !important;
+  line-height: 1.4 !important;
+  color: #5A3A22 !important;
+  font-family: 'Poppins', 'Noto Sans Tamil', sans-serif !important;
+}
+
+.leaflet-container {
+  font-family: 'Poppins', 'Noto Sans Tamil', sans-serif !important;
+  background: #FFFBEA !important;
+  z-index: 10 !important;
+}
+
+/* Animated dashed delivery path */
+@keyframes dash-animation {
+  to {
+    stroke-dashoffset: -40;
+  }
+}
+
+.animated-route-line {
+  stroke-dasharray: 8, 8;
+  animation: dash-animation 1.5s linear infinite;
+}
